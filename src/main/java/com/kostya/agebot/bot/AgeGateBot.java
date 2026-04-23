@@ -11,6 +11,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.ChatInviteLink;
 import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.MaybeInaccessibleMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -74,10 +75,17 @@ public class AgeGateBot extends TelegramLongPollingBot {
                 return;
             }
             if (update.hasMessage() && update.getMessage().hasText()) {
+                if (!isPrivateChat(update.getMessage())) {
+                    return;
+                }
                 handleMessage(update.getMessage());
                 return;
             }
             if (update.hasCallbackQuery()) {
+                CallbackQuery callbackQuery = update.getCallbackQuery();
+                if (callbackQuery.getMessage() != null && !isPrivateChat(callbackQuery.getMessage())) {
+                    return;
+                }
                 handleCallback(update.getCallbackQuery());
             }
         } catch (Exception e) {
@@ -624,6 +632,13 @@ public class AgeGateBot extends TelegramLongPollingBot {
             return false;
         }
         return groupId.trim().matches("^-?\\d+$");
+    }
+
+    private boolean isPrivateChat(MaybeInaccessibleMessage message) {
+        if (message == null) {
+            return false;
+        }
+        return message.isUserMessage();
     }
 
     private String formatAdminName(Repository.AdminProfile profile) {
