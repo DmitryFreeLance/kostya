@@ -157,6 +157,29 @@ public class Repository {
         }
     }
 
+    public Optional<String> getLatestInviteLink(long userId) {
+        String sql = """
+                SELECT invite_link
+                FROM invite_links
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT 1;
+                """;
+
+        try (Connection connection = database.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, userId);
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.ofNullable(rs.getString("invite_link"));
+                }
+                return Optional.empty();
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to load latest invite link", e);
+        }
+    }
+
     public void bootstrapAdmins(Set<Long> adminIds) {
         if (adminIds == null || adminIds.isEmpty()) {
             return;

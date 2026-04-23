@@ -140,7 +140,7 @@ public class AgeGateBot extends TelegramLongPollingBot {
         repository.recordStart(user, source, payload);
 
         if (repository.isUserVerified(user.getId())) {
-            sendText(chatId, "Вы уже активны.\nНовая ссылка не требуется.", null);
+            sendExistingInviteLink(chatId, user.getId());
             return;
         }
 
@@ -217,7 +217,7 @@ public class AgeGateBot extends TelegramLongPollingBot {
 
     private void handleAgeConfirm(long chatId, long userId) {
         if (repository.isUserVerified(userId)) {
-            sendText(chatId, "Вы уже активны.\nНовая ссылка не требуется.", null);
+            sendExistingInviteLink(chatId, userId);
             return;
         }
 
@@ -236,7 +236,7 @@ public class AgeGateBot extends TelegramLongPollingBot {
             ChatInviteLink inviteLink = execute(createInviteLink);
             boolean updated = repository.markUserVerified(userId);
             if (!updated) {
-                sendText(chatId, "Вы уже активны.\nНовая ссылка не требуется.", null);
+                sendExistingInviteLink(chatId, userId);
                 return;
             }
 
@@ -246,6 +246,15 @@ public class AgeGateBot extends TelegramLongPollingBot {
             log.error("Failed to generate invite link for user {}", userId, e);
             sendText(chatId, "⚠️ Не удалось выдать ссылку. Проверьте права бота в целевой группе.", null);
         }
+    }
+
+    private void sendExistingInviteLink(long chatId, long userId) {
+        Optional<String> inviteLink = repository.getLatestInviteLink(userId);
+        if (inviteLink.isPresent() && inviteLink.get() != null && !inviteLink.get().isBlank()) {
+            sendText(chatId, "Вы уже были приглашены в закрытый чат. Дублирую вашу ссылку:\n" + inviteLink.get(), null);
+            return;
+        }
+        sendText(chatId, "Вы уже активны, но сохраненная ссылка не найдена. Напишите администратору.", null);
     }
 
     private void handlePendingInput(Message message, PendingAction pendingAction) {
