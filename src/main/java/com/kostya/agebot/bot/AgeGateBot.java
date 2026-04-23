@@ -43,9 +43,12 @@ public class AgeGateBot extends TelegramLongPollingBot {
     private static final String CALLBACK_ADMIN_STATS = "admin:stats";
     private static final String CALLBACK_ADMIN_REF_MENU = "admin:ref-menu";
     private static final String CALLBACK_ADMIN_REF_AUTO = "admin:ref-auto";
+    private static final String CALLBACK_ADMIN_REF_LANDING = "admin:ref-landing";
+    private static final String CALLBACK_ADMIN_REF_ADS = "admin:ref-ads";
     private static final String CALLBACK_ADMIN_REF_MANUAL = "admin:ref-manual";
     private static final String CALLBACK_ADMIN_SET_GROUP = "admin:set-group";
     private static final String CALLBACK_ADMIN_ADMINS = "admin:admins";
+    private static final String CALLBACK_ADMIN_LIST_ALL = "admin:list-all";
     private static final String CALLBACK_ADMIN_ADD = "admin:add";
     private static final String CALLBACK_ADMIN_REMOVE_MENU = "admin:remove-menu";
 
@@ -86,6 +89,7 @@ public class AgeGateBot extends TelegramLongPollingBot {
         if (message == null || message.getFrom() == null || !message.hasText()) {
             return;
         }
+        repository.upsertUserProfile(message.getFrom());
 
         String text = message.getText().trim();
         long chatId = message.getChatId();
@@ -145,6 +149,7 @@ public class AgeGateBot extends TelegramLongPollingBot {
         }
 
         String data = callbackQuery.getData();
+        repository.upsertUserProfile(callbackQuery.getFrom());
         long chatId = callbackQuery.getMessage().getChatId();
         long userId = callbackQuery.getFrom().getId();
 
@@ -173,6 +178,8 @@ public class AgeGateBot extends TelegramLongPollingBot {
             case CALLBACK_ADMIN_STATS -> sendStats(chatId);
             case CALLBACK_ADMIN_REF_MENU -> sendRefMenu(chatId);
             case CALLBACK_ADMIN_REF_AUTO -> generateAndSendRefLink(chatId, userId, autoSource());
+            case CALLBACK_ADMIN_REF_LANDING -> generateAndSendRefLink(chatId, userId, "landing");
+            case CALLBACK_ADMIN_REF_ADS -> generateAndSendRefLink(chatId, userId, "ads");
             case CALLBACK_ADMIN_REF_MANUAL -> {
                 pendingActions.put(userId, PendingAction.CUSTOM_SOURCE);
                 sendText(chatId, "✍️ Отправьте source (например: landing, ads, partner1).", backToMenuKeyboard());
@@ -182,6 +189,7 @@ public class AgeGateBot extends TelegramLongPollingBot {
                 sendText(chatId, "🎯 Отправьте новый groupId (например: -1001234567890).", backToMenuKeyboard());
             }
             case CALLBACK_ADMIN_ADMINS -> sendAdminsMenu(chatId);
+            case CALLBACK_ADMIN_LIST_ALL -> sendAllAdmins(chatId);
             case CALLBACK_ADMIN_ADD -> {
                 pendingActions.put(userId, PendingAction.ADD_ADMIN);
                 sendText(chatId, "👤 Отправьте user_id нового админа.", backToMenuKeyboard());
@@ -350,6 +358,29 @@ public class AgeGateBot extends TelegramLongPollingBot {
         sendText(chatId, "👥 Управление администраторами", adminsMenuKeyboard());
     }
 
+    private void sendAllAdmins(long chatId) {
+        List<Repository.AdminProfile> profiles = repository.getAdminProfiles();
+        if (profiles.isEmpty()) {
+            sendText(chatId, "ℹ️ Список админов пуст.", backToMenuKeyboard());
+            return;
+        }
+
+        StringBuilder builder = new StringBuilder();
+        builder.append("📋 Все админы\n");
+        for (int i = 0; i < profiles.size(); i++) {
+            Repository.AdminProfile profile = profiles.get(i);
+            builder.append(i + 1)
+                    .append(". ")
+                    .append(formatAdminName(profile))
+                    .append(" | ")
+                    .append(formatAdminTag(profile))
+                    .append(" | id=")
+                    .append(profile.userId())
+                    .append("\n");
+        }
+        sendText(chatId, builder.toString(), backToAdminsKeyboard());
+    }
+
     private void sendRemoveAdminsMenu(long chatId, long requesterId) {
         List<Long> admins = repository.getAdminIds();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -419,6 +450,16 @@ public class AgeGateBot extends TelegramLongPollingBot {
 
     private InlineKeyboardMarkup refMenuKeyboard() {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        rows.add(List.of(
+                InlineKeyboardButton.builder()
+                        .text("🌐 Для сайта")
+                        .callbackData(CALLBACK_ADMIN_REF_LANDING)
+                        .build(),
+                InlineKeyboardButton.builder()
+                        .text("📢 Для рекламы")
+                        .callbackData(CALLBACK_ADMIN_REF_ADS)
+                        .build()
+        ));
         rows.add(List.of(InlineKeyboardButton.builder()
                 .text("⚡ Авто source")
                 .callbackData(CALLBACK_ADMIN_REF_AUTO)
@@ -437,6 +478,10 @@ public class AgeGateBot extends TelegramLongPollingBot {
     private InlineKeyboardMarkup adminsMenuKeyboard() {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         rows.add(List.of(InlineKeyboardButton.builder()
+                .text("📋 Все админы")
+                .callbackData(CALLBACK_ADMIN_LIST_ALL)
+                .build()));
+        rows.add(List.of(InlineKeyboardButton.builder()
                 .text("➕ Добавить админа")
                 .callbackData(CALLBACK_ADMIN_ADD)
                 .build()));
@@ -447,6 +492,15 @@ public class AgeGateBot extends TelegramLongPollingBot {
         rows.add(List.of(InlineKeyboardButton.builder()
                 .text("🔙 Назад")
                 .callbackData(CALLBACK_ADMIN_MENU)
+                .build()));
+        return new InlineKeyboardMarkup(rows);
+    }
+
+    private InlineKeyboardMarkup backToAdminsKeyboard() {
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+        rows.add(List.of(InlineKeyboardButton.builder()
+                .text("🔙 В админы")
+                .callbackData(CALLBACK_ADMIN_ADMINS)
                 .build()));
         return new InlineKeyboardMarkup(rows);
     }
@@ -570,6 +624,24 @@ public class AgeGateBot extends TelegramLongPollingBot {
             return false;
         }
         return groupId.trim().matches("^-?\\d+$");
+    }
+
+    private String formatAdminName(Repository.AdminProfile profile) {
+        String first = profile.firstName() == null ? "" : profile.firstName().trim();
+        String last = profile.lastName() == null ? "" : profile.lastName().trim();
+        String full = (first + " " + last).trim();
+        if (full.isBlank()) {
+            return "Без имени";
+        }
+        return full;
+    }
+
+    private String formatAdminTag(Repository.AdminProfile profile) {
+        String username = profile.username();
+        if (username == null || username.isBlank()) {
+            return "@без_тега";
+        }
+        return "@" + username.trim();
     }
 
     private enum PendingAction {

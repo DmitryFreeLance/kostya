@@ -27,6 +27,7 @@ public class Database {
                             user_id INTEGER PRIMARY KEY,
                             username TEXT,
                             first_name TEXT,
+                            last_name TEXT,
                             first_ref TEXT NOT NULL DEFAULT 'direct',
                             is_verified INTEGER NOT NULL DEFAULT 0,
                             verified_at TEXT,
@@ -83,6 +84,11 @@ public class Database {
 
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_start_events_source ON start_events(source);");
                 statement.execute("CREATE INDEX IF NOT EXISTS idx_users_first_ref ON users(first_ref);");
+                try {
+                    statement.execute("ALTER TABLE users ADD COLUMN last_name TEXT;");
+                } catch (SQLException ignored) {
+                    // Column already exists in migrated databases.
+                }
             }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to initialize database", e);

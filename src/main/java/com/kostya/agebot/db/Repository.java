@@ -26,11 +26,12 @@ public class Repository {
         String now = Instant.now().toString();
 
         String upsertUserSql = """
-                INSERT INTO users (user_id, username, first_name, first_ref, is_verified, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 0, ?, ?)
+                INSERT INTO users (user_id, username, first_name, last_name, first_ref, is_verified, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     username = excluded.username,
                     first_name = excluded.first_name,
+                    last_name = excluded.last_name,
                     updated_at = excluded.updated_at;
                 """;
 
@@ -47,9 +48,10 @@ public class Repository {
                 upsert.setLong(1, user.getId());
                 upsert.setString(2, user.getUserName());
                 upsert.setString(3, user.getFirstName());
-                upsert.setString(4, source);
-                upsert.setString(5, now);
+                upsert.setString(4, user.getLastName());
+                upsert.setString(5, source);
                 upsert.setString(6, now);
+                upsert.setString(7, now);
                 upsert.executeUpdate();
 
                 insertStart.setLong(1, user.getId());
@@ -67,6 +69,35 @@ public class Repository {
             }
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to record /start", e);
+        }
+    }
+
+    public void upsertUserProfile(User user) {
+        if (user == null || user.getId() == null) {
+            return;
+        }
+        String now = Instant.now().toString();
+        String sql = """
+                INSERT INTO users (user_id, username, first_name, last_name, first_ref, is_verified, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'direct', 0, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    username = excluded.username,
+                    first_name = excluded.first_name,
+                    last_name = excluded.last_name,
+                    updated_at = excluded.updated_at;
+                """;
+
+        try (Connection connection = database.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, user.getId());
+            statement.setString(2, user.getUserName());
+            statement.setString(3, user.getFirstName());
+            statement.setString(4, user.getLastName());
+            statement.setString(5, now);
+            statement.setString(6, now);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to upsert user profile", e);
         }
     }
 
@@ -177,6 +208,35 @@ public class Repository {
             return ids;
         } catch (SQLException e) {
             throw new IllegalStateException("Failed to load admins", e);
+        }
+    }
+
+    public List<AdminProfile> getAdminProfiles() {
+        String sql = """
+                SELECT a.user_id,
+                       u.username,
+                       u.first_name,
+                       u.last_name
+                FROM admins a
+                LEFT JOIN users u ON u.user_id = a.user_id
+                ORDER BY a.user_id ASC;
+                """;
+
+        List<AdminProfile> profiles = new ArrayList<>();
+        try (Connection connection = database.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet rs = statement.executeQuery()) {
+            while (rs.next()) {
+                profiles.add(new AdminProfile(
+                        rs.getLong("user_id"),
+                        rs.getString("username"),
+                        rs.getString("first_name"),
+                        rs.getString("last_name")
+                ));
+            }
+            return profiles;
+        } catch (SQLException e) {
+            throw new IllegalStateException("Failed to load admin profiles", e);
         }
     }
 
@@ -405,5 +465,8 @@ public class Repository {
                         long totalUsers,
                         long totalVerified,
                         List<SourceStat> sourceStats) {
+    }
+
+    public record AdminProfile(long userId, String username, String firstName, String lastName) {
     }
 }
